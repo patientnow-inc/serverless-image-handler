@@ -37,7 +37,7 @@ run_javascript_test() {
   cd $component_path
 
   # run unit tests
-  npm test
+  npm test -- -u
 
   # prepare coverage reports
   prepare_jest_coverage_report $component_name

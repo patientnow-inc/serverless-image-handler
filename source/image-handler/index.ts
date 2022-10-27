@@ -9,7 +9,6 @@ import jwt from 'jsonwebtoken';
 import { createHash } from 'crypto';
 
 import { getOptions } from '../solution-utils/get-options';
-import { isNullOrWhiteSpace } from '../solution-utils/helpers';
 import { ImageHandler } from './image-handler';
 import { ImageRequest } from './image-request';
 import { Headers, ImageHandlerEvent, ImageHandlerExecutionResult, StatusCodes } from './lib';

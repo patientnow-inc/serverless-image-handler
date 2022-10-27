@@ -8,18 +8,6 @@ export interface CustomResourceRequestPropertiesBase {
   CustomAction: CustomResourceActions;
 }
 
-export interface SendMetricsRequestProperties extends CustomResourceRequestPropertiesBase {
-  AnonymousData: 'Yes' | 'No';
-  UUID: string;
-  CorsEnabled: string;
-  SourceBuckets: string;
-  DeployDemoUi: string;
-  LogRetentionPeriod: number;
-  AutoWebP: string;
-  EnableSignature: string;
-  EnableDefaultFallbackImage: string;
-}
-
 export interface PutConfigRequestProperties extends CustomResourceRequestPropertiesBase {
   ConfigItem: unknown;
   DestS3Bucket: string;
@@ -33,18 +21,9 @@ export interface CopyS3AssetsRequestProperties extends CustomResourceRequestProp
   DestS3Bucket: string;
 }
 
-export interface CheckSourceBucketsRequestProperties extends CustomResourceRequestPropertiesBase {
-  SourceBuckets: string;
-}
-
 export interface CheckSecretManagerRequestProperties extends CustomResourceRequestPropertiesBase {
   SecretsManagerName: string;
   SecretsManagerKey: string;
-}
-
-export interface CheckFallbackImageRequestProperties extends CustomResourceRequestPropertiesBase {
-  FallbackImageS3Bucket: string;
-  FallbackImageS3Key: string;
 }
 
 export interface PolicyStatement {
@@ -79,24 +58,4 @@ export interface CompletionStatus {
 
 export interface LambdaContext {
   logStreamName: string;
-}
-
-export interface MetricsPayloadData {
-  Region: string;
-  Type: CustomResourceRequestTypes;
-  CorsEnabled: string;
-  NumberOfSourceBuckets: number;
-  DeployDemoUi: string;
-  LogRetentionPeriod: number;
-  AutoWebP: string;
-  EnableSignature: string;
-  EnableDefaultFallbackImage: string;
-}
-
-export interface MetricPayload {
-  Solution: string;
-  Version: string;
-  UUID: string;
-  TimeStamp: string;
-  Data: MetricsPayloadData;
 }

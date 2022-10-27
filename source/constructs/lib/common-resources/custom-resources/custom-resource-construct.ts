@@ -15,10 +15,6 @@ export interface CustomResourcesConstructProps extends CommonResourcesProps {
   readonly secretsManagerPolicy: Policy;
 }
 
-export interface AnonymousMetricCustomResourceProps extends SolutionConstructProps {
-  readonly anonymousData: string;
-}
-
 export interface ValidateSourceAndFallbackImageBucketsCustomResourceProps {
   readonly sourceBuckets: string;
   readonly fallbackImageS3Bucket: string;
@@ -40,6 +36,7 @@ export interface SetupValidateSecretsManagerProps {
 }
 
 export class CustomResourcesConstruct extends Construct {
+  private readonly environment: string;
   private readonly solutionVersion: string;
   private readonly sourceCodeBucket: IBucket;
   private readonly sourceCodeKeyPrefix: string;
@@ -53,6 +50,7 @@ export class CustomResourcesConstruct extends Construct {
 
     this.sourceCodeBucket = Bucket.fromBucketName(this, 'ImageHandlerLambdaSource', props.sourceCodeBucketName);
     this.sourceCodeKeyPrefix = props.sourceCodeKeyPrefix;
+    this.environment = props.environment;
     this.solutionVersion = props.solutionVersion;
     this.conditions = props.conditions;
 
@@ -95,7 +93,8 @@ export class CustomResourcesConstruct extends Construct {
     props.secretsManagerPolicy.attachToRole(this.customResourceRole);
 
     this.customResourceLambda = new LambdaFunction(this, 'CustomResourceFunction', {
-      description: `${props.solutionDisplayName} (${props.solutionVersion}): Custom resource`,
+      functionName: `${props.solutionName}-CustomResourceFunction-${props.environment}`,
+      description: `${props.solutionDisplayName} (${props.solutionVersion}): Custom resource on ${props.environment} environment`,
       runtime: Runtime.NODEJS_14_X,
       handler: 'custom-resource/index.handler',
       timeout: Duration.minutes(1),
@@ -111,41 +110,6 @@ export class CustomResourcesConstruct extends Construct {
 
     const customResourceUuid = this.createCustomResource('CustomResourceUuid', this.customResourceLambda, { Region: Aws.REGION, CustomAction: 'createUuid' });
     this.uuid = customResourceUuid.getAttString('UUID');
-  }
-
-  public setupAnonymousMetric(props: AnonymousMetricCustomResourceProps) {
-    this.createCustomResource('CustomResourceAnonymousMetric', this.customResourceLambda, {
-      CustomAction: 'sendMetric',
-      Region: Aws.REGION,
-      UUID: this.uuid,
-      AnonymousData: props.anonymousData,
-      CorsEnabled: props.corsEnabled,
-      SourceBuckets: props.sourceBuckets,
-      DeployDemoUi: props.deployUI,
-      LogRetentionPeriod: props.logRetentionPeriod,
-      AutoWebP: props.autoWebP,
-      EnableSignature: props.enableSignature,
-      EnableDefaultFallbackImage: props.enableDefaultFallbackImage
-    });
-  }
-
-  public setupValidateSourceAndFallbackImageBuckets(props: ValidateSourceAndFallbackImageBucketsCustomResourceProps) {
-    this.createCustomResource('CustomResourceCheckSourceBuckets', this.customResourceLambda, {
-      CustomAction: 'checkSourceBuckets',
-      Region: Aws.REGION,
-      SourceBuckets: props.sourceBuckets
-    });
-
-    this.createCustomResource(
-      'CustomResourceCheckFallbackImage',
-      this.customResourceLambda,
-      {
-        CustomAction: 'checkFallbackImage',
-        FallbackImageS3Bucket: props.fallbackImageS3Bucket,
-        FallbackImageS3Key: props.fallbackImageS3Key
-      },
-      this.conditions.enableDefaultFallbackImageCondition
-    );
   }
 
   public setupCopyWebsiteCustomResource(props: SetupCopyWebsiteCustomResourceProps) {
@@ -197,7 +161,7 @@ export class CustomResourcesConstruct extends Construct {
   }
 
   public createLogBucket(): IBucket {
-    const bucketSuffix = `${Aws.STACK_NAME}-${Aws.REGION}-${Aws.ACCOUNT_ID}`;
+    const bucketSuffix = `${Aws.STACK_NAME}-${Aws.REGION}-${Aws.ACCOUNT_ID}-${this.environment}`;
     const logBucketCreationResult = this.createCustomResource('LogBucketCustomResource', this.customResourceLambda, {
       CustomAction: 'createCloudFrontLoggingBucket',
       BucketSuffix: bucketSuffix

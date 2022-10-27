@@ -12,6 +12,7 @@ import { CustomResourcesConstruct } from './custom-resources/custom-resource-con
 export interface CommonResourcesProps extends SolutionConstructProps {
   readonly solutionId: string;
   readonly solutionVersion: string;
+  readonly solutionName: string;
   readonly solutionDisplayName: string;
   readonly sourceCodeBucketName: string;
   readonly sourceCodeKeyPrefix: string;
@@ -20,7 +21,6 @@ export interface CommonResourcesProps extends SolutionConstructProps {
 export interface Conditions {
   readonly deployUICondition: CfnCondition;
   readonly enableSignatureCondition: CfnCondition;
-  readonly enableDefaultFallbackImageCondition: CfnCondition;
   readonly enableCorsCondition: CfnCondition;
 }
 
@@ -42,9 +42,6 @@ export class CommonResources extends Construct {
       }),
       enableSignatureCondition: new CfnCondition(this, 'EnableSignatureCondition', {
         expression: Fn.conditionEquals(props.enableSignature, 'Yes')
-      }),
-      enableDefaultFallbackImageCondition: new CfnCondition(this, 'EnableDefaultFallbackImageCondition', {
-        expression: Fn.conditionEquals(props.enableDefaultFallbackImage, 'Yes')
       }),
       enableCorsCondition: new CfnCondition(this, 'EnableCorsCondition', {
         expression: Fn.conditionEquals(props.corsEnabled, 'Yes')

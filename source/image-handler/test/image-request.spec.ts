@@ -1,15 +1,11 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import { mockAwsS3, mockAwsSecretManager, mockAxios } from './mock';
-
-import fs from 'fs';
-import path from 'path';
 import SecretsManager from 'aws-sdk/clients/secretsmanager';
 import S3 from 'aws-sdk/clients/s3';
 
 import { ImageRequest } from '../image-request';
-import { ImageHandlerError, RequestTypes, StatusCodes } from '../lib';
+import { RequestTypes, StatusCodes } from '../lib';
 import { SecretProvider } from '../secret-provider';
 
 describe('parseImageEdits()', () => {
