@@ -1088,7 +1088,11 @@ Object {
                     Object {
                       "Ref": "AWS::Region",
                     },
-                    "::parameter/pn-services/*",
+                    ":",
+                    Object {
+                      "Ref": "AWS::AccountId",
+                    },
+                    ":parameter/pn-services/*",
                   ],
                 ],
               },
