@@ -12,9 +12,7 @@ import { v4 } from 'uuid';
 import { getOptions } from '../solution-utils/get-options';
 import { isNullOrWhiteSpace } from '../solution-utils/helpers';
 import {
-  CheckFallbackImageRequestProperties,
   CheckSecretManagerRequestProperties,
-  CheckSourceBucketsRequestProperties,
   CompletionStatus,
   CopyS3AssetsRequestProperties,
   CreateLoggingBucketRequestProperties,
@@ -24,9 +22,7 @@ import {
   CustomResourceRequestTypes,
   ErrorCodes,
   LambdaContext,
-  MetricPayload,
   PutConfigRequestProperties,
-  SendMetricsRequestProperties,
   StatusTypes
 } from './lib';
 
@@ -35,8 +31,7 @@ const s3Client = new S3(awsSdkOptions);
 const ec2Client = new EC2(awsSdkOptions);
 const secretsManager = new SecretsManager(awsSdkOptions);
 
-const { SOLUTION_ID, SOLUTION_VERSION, AWS_REGION, RETRY_SECONDS } = process.env;
-const METRICS_ENDPOINT = 'https://metrics.awssolutionsbuilder.com/generic';
+const { AWS_REGION, RETRY_SECONDS } = process.env;
 const RETRY_COUNT = 3;
 
 /**
@@ -56,13 +51,6 @@ export async function handler(event: CustomResourceRequest, context: LambdaConte
 
   try {
     switch (ResourceProperties.CustomAction) {
-      case CustomResourceActions.SEND_ANONYMOUS_METRIC: {
-        const requestProperties: SendMetricsRequestProperties = ResourceProperties as SendMetricsRequestProperties;
-        if (requestProperties.AnonymousData === 'Yes') {
-          response.Data = await sendAnonymousMetric(requestProperties, RequestType);
-        }
-        break;
-      }
       case CustomResourceActions.PUT_CONFIG_FILE:
         if ([CustomResourceRequestTypes.CREATE, CustomResourceRequestTypes.UPDATE].includes(RequestType)) {
           response.Data = await putConfigFile(ResourceProperties as PutConfigRequestProperties);
@@ -78,19 +66,9 @@ export async function handler(event: CustomResourceRequest, context: LambdaConte
           response.Data = await generateUUID();
         }
         break;
-      case CustomResourceActions.CHECK_SOURCE_BUCKETS:
-        if ([CustomResourceRequestTypes.CREATE, CustomResourceRequestTypes.UPDATE].includes(RequestType)) {
-          response.Data = await validateBuckets(ResourceProperties as CheckSourceBucketsRequestProperties);
-        }
-        break;
       case CustomResourceActions.CHECK_SECRETS_MANAGER:
         if ([CustomResourceRequestTypes.CREATE, CustomResourceRequestTypes.UPDATE].includes(RequestType)) {
           response.Data = await checkSecretsManager(ResourceProperties as CheckSecretManagerRequestProperties);
-        }
-        break;
-      case CustomResourceActions.CHECK_FALLBACK_IMAGE:
-        if ([CustomResourceRequestTypes.CREATE, CustomResourceRequestTypes.UPDATE].includes(RequestType)) {
-          response.Data = await checkFallbackImage(ResourceProperties as CheckFallbackImageRequestProperties);
         }
         break;
       case CustomResourceActions.CREATE_LOGGING_BUCKET:
@@ -186,64 +164,6 @@ async function sendCloudFormationResponse(event: CustomResourceRequest, logStrea
   };
 
   return axios.put(event.ResponseURL, responseBody, config);
-}
-
-/**
- * Sends anonymous metrics.
- * @param requestProperties The send metrics request properties.
- * @param requestType The request type.
- * @returns Promise message object.
- */
-async function sendAnonymousMetric(requestProperties: SendMetricsRequestProperties, requestType: CustomResourceRequestTypes): Promise<{ Message: string; Data: MetricPayload }> {
-  const result: { Message: string; Data: MetricPayload } = { Message: '', Data: undefined };
-
-  try {
-    const numberOfSourceBuckets =
-      requestProperties.SourceBuckets?.split(',')
-        .map(x => x.trim())
-        .filter(x => !isNullOrWhiteSpace(x)).length || 0;
-    const payload: MetricPayload = {
-      Solution: SOLUTION_ID,
-      Version: SOLUTION_VERSION,
-      UUID: requestProperties.UUID,
-      TimeStamp: moment.utc().format('YYYY-MM-DD HH:mm:ss.S'),
-      Data: {
-        Region: AWS_REGION,
-        Type: requestType,
-        CorsEnabled: requestProperties.CorsEnabled,
-        NumberOfSourceBuckets: numberOfSourceBuckets,
-        DeployDemoUi: requestProperties.DeployDemoUi,
-        LogRetentionPeriod: requestProperties.LogRetentionPeriod,
-        AutoWebP: requestProperties.AutoWebP,
-        EnableSignature: requestProperties.EnableSignature,
-        EnableDefaultFallbackImage: requestProperties.EnableDefaultFallbackImage
-      }
-    };
-
-    result.Data = payload;
-
-    const payloadStr = JSON.stringify(payload);
-
-    const config: AxiosRequestConfig = {
-      headers: {
-        'content-type': 'application/json',
-        'content-length': payloadStr.length
-      }
-    };
-
-    console.info('Sending anonymous metric', payloadStr);
-    const response = await axios.post(METRICS_ENDPOINT, payloadStr, config);
-    console.info(`Anonymous metric response: ${response.statusText} (${response.status})`);
-
-    result.Message = 'Anonymous data was sent successfully.';
-  } catch (err) {
-    console.error('Error sending anonymous metric');
-    console.error(err);
-
-    result.Message = 'Anonymous data was sent failed.';
-  }
-
-  return result;
 }
 
 /**
@@ -372,45 +292,6 @@ async function generateUUID(): Promise<{ UUID: string }> {
 }
 
 /**
- * Validates if buckets exist in the account.
- * @param requestProperties The request properties.
- * @returns The result of validation.
- */
-async function validateBuckets(requestProperties: CheckSourceBucketsRequestProperties): Promise<{ Message: string }> {
-  const { SourceBuckets } = requestProperties;
-  const buckets = SourceBuckets.replace(/\s/g, '');
-
-  console.info(`Attempting to check if the following buckets exist: ${buckets}`);
-
-  const checkBuckets = buckets.split(',');
-  const errorBuckets = [];
-
-  for (const bucket of checkBuckets) {
-    const params = { Bucket: bucket };
-    try {
-      await s3Client.headBucket(params).promise();
-
-      console.info(`Found bucket: ${bucket}`);
-    } catch (error) {
-      console.error(`Could not find bucket: ${bucket}`);
-      console.error(error);
-      errorBuckets.push(bucket);
-    }
-  }
-
-  if (errorBuckets.length === 0) {
-    return { Message: 'Buckets validated.' };
-  } else {
-    const commaSeparatedErrors = errorBuckets.join(',');
-
-    throw new CustomResourceError(
-      'BucketNotFound',
-      `Could not find the following source bucket(s) in your account: ${commaSeparatedErrors}. Please specify at least one source bucket that exists within your account and try again. If specifying multiple source buckets, please ensure that they are comma-separated.`
-    );
-  }
-}
-
-/**
  * Checks if AWS Secrets Manager secret is valid.
  * @param requestProperties The request properties.
  * @returns ARN of the AWS Secrets Manager secret.
@@ -455,50 +336,6 @@ async function checkSecretsManager(requestProperties: CheckSecretManagerRequestP
   return {
     Message: 'Secrets Manager validated.',
     ARN: arn
-  };
-}
-
-/**
- * Checks fallback image.
- * @param requestProperties The request properties.
- * @returns The result of validation.
- */
-async function checkFallbackImage(requestProperties: CheckFallbackImageRequestProperties): Promise<{ Message: string; Data: unknown }> {
-  const { FallbackImageS3Bucket, FallbackImageS3Key } = requestProperties as CheckFallbackImageRequestProperties;
-
-  if (isNullOrWhiteSpace(FallbackImageS3Bucket)) {
-    throw new CustomResourceError('S3BucketNotProvided', 'You need to provide the default fallback image bucket.');
-  }
-
-  if (isNullOrWhiteSpace(FallbackImageS3Key)) {
-    throw new CustomResourceError('S3KeyNotProvided', 'You need to provide the default fallback image object key.');
-  }
-
-  let data = {};
-
-  for (let retry = 1; retry <= RETRY_COUNT; retry++) {
-    try {
-      data = await s3Client.headObject({ Bucket: FallbackImageS3Bucket, Key: FallbackImageS3Key }).promise();
-      break;
-    } catch (error) {
-      if (retry === RETRY_COUNT || ![ErrorCodes.ACCESS_DENIED, ErrorCodes.FORBIDDEN].includes(error.code)) {
-        console.error(`Either the object does not exist or you don't have permission to access the object: ${FallbackImageS3Bucket}/${FallbackImageS3Key}`);
-
-        throw new CustomResourceError(
-          'FallbackImageError',
-          `Either the object does not exist or you don't have permission to access the object: ${FallbackImageS3Bucket}/${FallbackImageS3Key}`
-        );
-      } else {
-        console.info('Waiting for retry...');
-
-        await sleep(getRetryTimeout(retry));
-      }
-    }
-  }
-
-  return {
-    Message: 'The default fallback image validated.',
-    Data: data
   };
 }
 

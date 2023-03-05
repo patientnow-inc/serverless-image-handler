@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import S3 from 'aws-sdk/clients/s3';
+import axios from 'axios';
 import { createHmac } from 'crypto';
 
 import { DefaultImageRequest, ImageEdits, ImageFormatTypes, ImageHandlerError, ImageHandlerEvent, ImageRequestInfo, Headers, RequestTypes, StatusCodes } from './lib';
@@ -18,8 +19,9 @@ type OriginalImageInfo = Partial<{
 
 export class ImageRequest {
   private static readonly DEFAULT_REDUCTION_EFFORT = 4;
+  private static readonly MATCH_PRESIGNED_URL = 'https://(.?[^.]*).(.?[^/]*)/([^?]*)';
 
-  constructor(private readonly s3Client: S3, private readonly secretProvider: SecretProvider) {}
+  constructor(private readonly s3Client: S3, private readonly secretProvider: SecretProvider) { }
 
   /**
    * Initializer function for creating a new image request, used by the image handler to perform image modifications.
@@ -33,11 +35,12 @@ export class ImageRequest {
       let imageRequestInfo: ImageRequestInfo = <ImageRequestInfo>{};
 
       imageRequestInfo.requestType = this.parseRequestType(event);
+      imageRequestInfo.presignedUrl = this.parsePresignedUrl(event);
       imageRequestInfo.bucket = this.parseImageBucket(event, imageRequestInfo.requestType);
       imageRequestInfo.key = this.parseImageKey(event, imageRequestInfo.requestType);
       imageRequestInfo.edits = this.parseImageEdits(event, imageRequestInfo.requestType);
 
-      const originalImage = await this.getOriginalImage(imageRequestInfo.bucket, imageRequestInfo.key);
+      const originalImage = await this.getOriginalImage(imageRequestInfo.bucket, imageRequestInfo.key, imageRequestInfo.presignedUrl);
       imageRequestInfo = { ...imageRequestInfo, ...originalImage };
 
       imageRequestInfo.headers = this.parseImageHeaders(event, imageRequestInfo.requestType);
@@ -100,36 +103,20 @@ export class ImageRequest {
    * @param key The key name corresponding to the image.
    * @returns The original image or an error.
    */
-  public async getOriginalImage(bucket: string, key: string): Promise<OriginalImageInfo> {
+  public async getOriginalImage(bucket: string, key: string, presignedUrl?: string): Promise<OriginalImageInfo> {
     try {
       const result: OriginalImageInfo = {};
-
-      const imageLocation = { Bucket: bucket, Key: key };
-      const originalImage = await this.s3Client.getObject(imageLocation).promise();
-      const imageBuffer = Buffer.from(originalImage.Body as Uint8Array);
-
-      if (originalImage.ContentType) {
-        // If using default S3 ContentType infer from hex headers
-        if (['binary/octet-stream', 'application/octet-stream'].includes(originalImage.ContentType)) {
-          result.contentType = this.inferImageType(imageBuffer);
-        } else {
-          result.contentType = originalImage.ContentType;
-        }
-      } else {
-        result.contentType = 'image';
+      if (presignedUrl !== null) {
+        const imageBuffer = await axios.get(presignedUrl, {
+          responseType: 'arraybuffer'
+        }).then(function (originalImage) {
+          //const imageBuffer = Buffer.from(response.data as Uint8Array);
+          return Buffer.from(originalImage.data as Uint8Array);
+        });
+        result.contentType = this.inferImageType(imageBuffer);
+        result.cacheControl = 'max-age=31536000,public';
+        result.originalImage = imageBuffer;
       }
-
-      if (originalImage.Expires) {
-        result.expires = new Date(originalImage.Expires).toUTCString();
-      }
-
-      if (originalImage.LastModified) {
-        result.lastModified = new Date(originalImage.LastModified).toUTCString();
-      }
-
-      result.cacheControl = originalImage.CacheControl ?? 'max-age=31536000,public';
-      result.originalImage = imageBuffer;
-
       return result;
     } catch (error) {
       let status = StatusCodes.INTERNAL_SERVER_ERROR;
@@ -153,28 +140,15 @@ export class ImageRequest {
       // Decode the image request
       const request = this.decodeRequest(event);
 
-      if (request.bucket !== undefined) {
-        // Check the provided bucket against the allowed list
-        const sourceBuckets = this.getAllowedSourceBuckets();
+      if (request.presignedUrl !== undefined) {
+        const regexForPreSignedURL = new RegExp(ImageRequest.MATCH_PRESIGNED_URL);
+        var regexGroups = regexForPreSignedURL.exec(request.presignedUrl);
 
-        if (sourceBuckets.includes(request.bucket) || request.bucket.match(new RegExp('^' + sourceBuckets[0] + '$'))) {
-          return request.bucket;
-        } else {
-          throw new ImageHandlerError(
-            StatusCodes.FORBIDDEN,
-            'ImageBucket::CannotAccessBucket',
-            'The bucket you specified could not be accessed. Please check that the bucket is specified in your SOURCE_BUCKETS.'
-          );
+        if (regexGroups !== null && Object.keys(regexGroups).length >= 3) {
+          const bucketName = regexGroups[1];
+          return bucketName;
         }
-      } else {
-        // Try to use the default image source bucket env var
-        const sourceBuckets = this.getAllowedSourceBuckets();
-        return sourceBuckets[0];
       }
-    } else if (requestType === RequestTypes.THUMBOR || requestType === RequestTypes.CUSTOM) {
-      // Use the default image source bucket env var
-      const sourceBuckets = this.getAllowedSourceBuckets();
-      return sourceBuckets[0];
     } else {
       throw new ImageHandlerError(
         StatusCodes.NOT_FOUND,
@@ -218,9 +192,21 @@ export class ImageRequest {
    */
   public parseImageKey(event: ImageHandlerEvent, requestType: RequestTypes): string {
     if (requestType === RequestTypes.DEFAULT) {
-      // Decode the image request and return the image key
-      const { key } = this.decodeRequest(event);
-      return key;
+
+      // Decode the image request
+      const request = this.decodeRequest(event);
+
+      if (request.presignedUrl !== undefined) {
+        const regexForPreSignedURL = new RegExp(ImageRequest.MATCH_PRESIGNED_URL);
+        var regexGroups = regexForPreSignedURL.exec(request.presignedUrl);
+
+        if (regexGroups !== null && Object.keys(regexGroups).length >= 3) {
+          const keyName = regexGroups[3];
+          return keyName;
+        }
+      }
+
+      return request.key;
     }
 
     if (requestType === RequestTypes.THUMBOR || requestType === RequestTypes.CUSTOM) {
@@ -293,6 +279,25 @@ export class ImageRequest {
   }
 
   /**
+   * Parses the presigned URL to be sent with the response.
+   * @param event Lambda request body.
+   * @returns The presigned url string to be sent with the response.
+   */
+  public parsePresignedUrl(event: ImageHandlerEvent): string {
+    // Decode the image request
+    const { presignedUrl } = this.decodeRequest(event);
+    if (presignedUrl) {
+      return presignedUrl;
+    } else {
+      throw new ImageHandlerError(
+        StatusCodes.BAD_REQUEST,
+        'DecodeRequest::CannotReadPresignedUrl',
+        'The Presigned URL you provided could not be read. Please ensure that it is properly formed according to the solution documentation.'
+      );
+    }
+  }
+
+  /**
    * Parses the headers to be sent with the response.
    * @param event Lambda request body.
    * @param requestType Image handler request type.
@@ -335,25 +340,6 @@ export class ImageRequest {
         'DecodeRequest::CannotReadPath',
         'The URL path you provided could not be read. Please ensure that it is properly formed according to the solution documentation.'
       );
-    }
-  }
-
-  /**
-   * Returns a formatted image source bucket allowed list as specified in the SOURCE_BUCKETS environment variable of the image handler Lambda function.
-   * Provides error handling for missing/invalid values.
-   * @returns A formatted image source bucket.
-   */
-  public getAllowedSourceBuckets(): string[] {
-    const { SOURCE_BUCKETS } = process.env;
-
-    if (SOURCE_BUCKETS === undefined) {
-      throw new ImageHandlerError(
-        StatusCodes.BAD_REQUEST,
-        'GetAllowedSourceBuckets::NoSourceBuckets',
-        'The SOURCE_BUCKETS variable could not be read. Please check that it is not empty and contains at least one source bucket, or multiple buckets separated by commas. Spaces can be provided between commas and bucket names, these will be automatically parsed out when decoding.'
-      );
-    } else {
-      return SOURCE_BUCKETS.replace(/\s+/g, '').split(',');
     }
   }
 

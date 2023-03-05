@@ -20,7 +20,7 @@ export function addCfnSuppressRules(resource: Resource | CfnResource | undefined
     resource = resource.node.defaultChild as CfnResource;
   }
 
-  if (resource.cfnOptions.metadata?.cfn_nag?.rules_to_suppress) {
+  if (resource.cfnOptions?.metadata?.cfn_nag?.rules_to_suppress) {
     resource.cfnOptions.metadata.cfn_nag.rules_to_suppress.push(...rules);
   } else {
     resource.addMetadata('cfn_nag', { rules_to_suppress: rules });

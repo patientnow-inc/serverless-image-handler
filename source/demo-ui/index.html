@@ -29,15 +29,14 @@
             <div class="col-sm">
                 <div class="card">
                     <div class="card-body">
-                        <h5 class="card-title">Image Source</h5>
+                        <h5 class="card-title">Image Source </h5>
+                        <hr>
                         <form>
                             <div class="form-group">
-                                <small id="lbl-bucket-name" class="form-text text-muted">Enter the name of an Amazon S3 bucket in your account that contains original image files.</small>
-                                <input type="text" class="form-control" id="txt-bucket-name" aria-describedby="lbl-bucket-name" placeholder="Bucket name">
-                                <small id="lbl-key-name" class="form-text text-muted">Enter the name of an original image file (with extension) stored in the above Amazon S3 bucket.</small>
-                                <input type="text" class="form-control" id="txt-key-name" aria-describedby="lbl-key-name" placeholder="Image key">
+                                <small id="lbl-presigned-url" class="form-text text-muted">Enter the image pre-signed URL.</small>
+                                <input type="text" class="form-control" id="txt-presigned-url" aria-describedby="lbl-presigned-url" placeholder="Pre-signed URL name">
                             </div>
-                            <button id="btn-import-original" type="button" class="btn btn-primary" onclick="importOriginalImage()">Import</button>
+                            <button id="btn-import-original" type="button" class="btn btn-primary" onclick="importOriginalImageFromPreSignedURL()">Import from pre-signed URL</button>
                         </form>
                     </div>
                 </div>
@@ -56,6 +55,15 @@
                     <div class="card-body">
                         <h5 class="card-title">Editor</h5>
                         <form>
+                            <hr>
+                            <div class="row">
+                                <div class="col-sm">
+                                    <div class="form-group">
+                                        <label for="editor-width">Authorization Bearer Token</label>
+                                        <input type="text" class="form-control" id="editor-jwt" placeholder="eyJhb...">
+                                    </div>
+                                </div>
+                            </div>
                             <hr>
                             <div class="row">
                                 <div class="col-sm">
@@ -185,7 +193,12 @@
                                 <input type="text" class="form-control" id="preview-encoded-url" placeholder="">
                             </div>
                         </div>
-                        <a href="#" data-toggle="tooltip" title="" data-placement="top" data-original-title="Be sure that you haven't specified any parameters that might be out of range for the image you selected. Reference the debug console for additional error information." style="font-size:0.8em">Having trouble?</a>
+                        <a href="#" data-toggle="tooltip" title="" data-placement="top" data-original-title="Be sure that you haven't specified any parameters that might be out of range for the image you selected. Reference the debug console for additional error information." style="font-size:0.8em">Having trouble?</a><br>
+                        <div>
+                            Response Body:
+                            <a href="#" data-toggle="tooltip" title="" data-placement="top" data-original-title="The new, JSON-formatted image response containing the presigned URL." style="font-size:0.8em">[?]</a>
+                            <pre class="preview-code-block" id="preview-response-body"></pre>
+                        </div>
                     </div>
                 </div>
             </div>

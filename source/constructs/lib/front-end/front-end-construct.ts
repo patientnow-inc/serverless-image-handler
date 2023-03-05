@@ -10,6 +10,7 @@ import { addCfnSuppressRules } from '../../utils/utils';
 import { Conditions } from '../common-resources/common-resources-construct';
 
 export interface FrontEndProps {
+  readonly environment: string;
   readonly logsBucket: IBucket;
   readonly conditions: Conditions;
 }
@@ -27,7 +28,7 @@ export class FrontEndConstruct extends Construct {
     const cloudFrontToS3 = new CloudFrontToS3(this, 'DistributionToS3', {
       bucketProps: { serverAccessLogsBucket: undefined },
       cloudFrontDistributionProps: {
-        comment: 'Demo UI Distribution for Serverless Image Handler',
+        comment: `${props.environment} - Demo UI Distribution for Serverless Image Handler`,
         enableLogging: true,
         logBucket: props.logsBucket,
         logFilePrefix: 'ui-cloudfront/',

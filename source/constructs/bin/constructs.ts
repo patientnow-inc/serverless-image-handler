@@ -5,7 +5,7 @@ import { App } from '@aws-cdk/core';
 import { ServerlessImageHandlerStack, ServerlessImageHandlerStackProps } from '../lib/serverless-image-stack';
 
 const getProps = (): ServerlessImageHandlerStackProps => {
-  const { SOLUTION_BUCKET_NAME_PLACEHOLDER, SOLUTION_NAME_PLACEHOLDER, SOLUTION_VERSION_PLACEHOLDER } = process.env;
+  const { SOLUTION_BUCKET_NAME_PLACEHOLDER, SOLUTION_NAME_PLACEHOLDER, SOLUTION_VERSION_PLACEHOLDER, ENVIRONMENT_PLACEHOLDER } = process.env;
 
   if (typeof SOLUTION_BUCKET_NAME_PLACEHOLDER !== 'string' || SOLUTION_BUCKET_NAME_PLACEHOLDER.trim() === '') {
     throw new Error('Missing required environment variable: SOLUTION_BUCKET_NAME_PLACEHOLDER');
